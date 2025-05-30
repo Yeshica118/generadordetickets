@@ -1,0 +1,21 @@
+{
+  "name": "nodejs",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jlbautistac/2025-2-software-maintenance-nodejs.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/jlbautistac/2025-2-software-maintenance-nodejs/issues"
+  },
+  "homepage": "https://github.com/jlbautistac/2025-2-software-maintenance-nodejs#readme"
+}
