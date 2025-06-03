@@ -21,14 +21,15 @@ class TaskManager {
   }
 
   saveTasks() {
-    fs.writeFileSync(this.fileName, JSON.stringify(this.tasks));
+    fs.writeFileSync(this.fileName, JSON.stringify(this.tasks, null, 2));
   }
 
-  addTask(title, description) {
+  addTask(title, description, deadline) {
     const task = {
       id: this.tasks.length + 1,
       title: title,
       description: description,
+      deadline: deadline || null, // puede ser null si se omite
       status: 'Pending',
       createdDate: new Date().toISOString().replace('T', ' ').substring(0, 19)
     };
@@ -46,17 +47,17 @@ class TaskManager {
       return;
     }
 
-    console.log('\n' + '='.repeat(80));
-    console.log(`${'ID'.padEnd(5)} ${'TITLE'.padEnd(20)} ${'STATUS'.padEnd(10)} ${'CREATED DATE'.padEnd(20)} ${'DESCRIPTION'.padEnd(30)}`);
-    console.log('-'.repeat(80));
+    console.log('\n' + '='.repeat(100));
+    console.log(`${'ID'.padEnd(5)} ${'TITLE'.padEnd(20)} ${'STATUS'.padEnd(10)} ${'CREATED DATE'.padEnd(20)} ${'DEADLINE'.padEnd(15)} ${'DESCRIPTION'.padEnd(25)}`);
+    console.log('-'.repeat(100));
 
     for (const task of tasksToShow) {
       console.log(
-        `${String(task.id).padEnd(5)} ${task.title.substring(0, 18).padEnd(20)} ${task.status.padEnd(10)} ${task.createdDate.padEnd(20)} ${task.description.substring(0, 28).padEnd(30)}`
+        `${String(task.id).padEnd(5)} ${task.title.substring(0, 18).padEnd(20)} ${task.status.padEnd(10)} ${task.createdDate.padEnd(20)} ${String(task.deadline || 'N/A').padEnd(15)} ${task.description.substring(0, 23).padEnd(25)}`
       );
     }
 
-    console.log('='.repeat(80) + '\n');
+    console.log('='.repeat(100) + '\n');
   }
 
   markComplete(taskId) {
@@ -124,7 +125,8 @@ async function main() {
     if (choice === '1') {
       const title = await prompt('Enter task title: ');
       const description = await prompt('Enter task description: ');
-      taskManager.addTask(title, description);
+      const deadline = await prompt('Enter deadline (YYYY-MM-DD) or leave blank: ');
+      taskManager.addTask(title, description, deadline.trim() || null);
     }
     else if (choice === '2') {
       taskManager.listTasks();
