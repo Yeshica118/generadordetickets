@@ -32,14 +32,16 @@ class TaskManager {
       status: 'Pending',
       createdDate: new Date().toISOString().replace('T', ' ').substring(0, 19)
     };
-    
+
     this.tasks.push(task);
     this.saveTasks();
     console.log(`Task '${title}' added successfully!`);
   }
 
-  listTasks() {
-    if (this.tasks.length === 0) {
+  listTasks(filteredTasks = null) {
+    const tasksToShow = filteredTasks || this.tasks;
+
+    if (tasksToShow.length === 0) {
       console.log('No tasks found.');
       return;
     }
@@ -48,12 +50,12 @@ class TaskManager {
     console.log(`${'ID'.padEnd(5)} ${'TITLE'.padEnd(20)} ${'STATUS'.padEnd(10)} ${'CREATED DATE'.padEnd(20)} ${'DESCRIPTION'.padEnd(30)}`);
     console.log('-'.repeat(80));
 
-    for (const task of this.tasks) {
+    for (const task of tasksToShow) {
       console.log(
         `${String(task.id).padEnd(5)} ${task.title.substring(0, 18).padEnd(20)} ${task.status.padEnd(10)} ${task.createdDate.padEnd(20)} ${task.description.substring(0, 28).padEnd(30)}`
       );
     }
-    
+
     console.log('='.repeat(80) + '\n');
   }
 
@@ -80,15 +82,23 @@ class TaskManager {
     }
     console.log(`Task with ID ${taskId} not found.`);
   }
+
+  searchTasks(keyword) {
+    const lowerKeyword = keyword.toLowerCase();
+    const filtered = this.tasks.filter(task =>
+      task.title.toLowerCase().includes(lowerKeyword) ||
+      task.description.toLowerCase().includes(lowerKeyword)
+    );
+
+    this.listTasks(filtered);
+  }
 }
 
-// Create readline interface for user input
 const rl = readline.createInterface({
   input: process.stdin,
   output: process.stdout
 });
 
-// Helper function to prompt user for input
 function prompt(question) {
   return new Promise((resolve) => {
     rl.question(question, (answer) => {
@@ -97,10 +107,9 @@ function prompt(question) {
   });
 }
 
-// Main application function
 async function main() {
   const taskManager = new TaskManager();
-  
+
   while (true) {
     console.log('\nTASK MANAGER');
     console.log('1. Add Task');
@@ -108,9 +117,10 @@ async function main() {
     console.log('3. Mark Task as Complete');
     console.log('4. Delete Task');
     console.log('5. Exit');
-    
-    const choice = await prompt('Enter your choice (1-5): ');
-    
+    console.log('6. Search Tasks by Keyword');
+
+    const choice = await prompt('Enter your choice (1-6): ');
+
     if (choice === '1') {
       const title = await prompt('Enter task title: ');
       const description = await prompt('Enter task description: ');
@@ -132,13 +142,16 @@ async function main() {
       rl.close();
       break;
     }
+    else if (choice === '6') {
+      const keyword = await prompt('Enter keyword to search in title/description: ');
+      taskManager.searchTasks(keyword);
+    }
     else {
       console.log('Invalid choice. Please try again.');
     }
   }
 }
 
-// Run the application
 main().catch(error => {
   console.error('An error occurred:', error);
   rl.close();
