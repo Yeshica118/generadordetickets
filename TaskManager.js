@@ -27,11 +27,12 @@ class TaskManager {
   addTask(title, description, deadline) {
     const task = {
       id: this.tasks.length + 1,
-      title: title,
-      description: description,
-      deadline: deadline || null, // puede ser null si se omite
+      title,
+      description,
+      deadline: deadline || null,
       status: 'Pending',
-      createdDate: new Date().toISOString().replace('T', ' ').substring(0, 19)
+      createdDate: new Date().toISOString().replace('T', ' ').substring(0, 19),
+      deleted: false 
     };
 
     this.tasks.push(task);
@@ -39,8 +40,8 @@ class TaskManager {
     console.log(`Task '${title}' added successfully!`);
   }
 
-  listTasks(filteredTasks = null) {
-    const tasksToShow = filteredTasks || this.tasks;
+  listTasks(filteredTasks = null, includeDeleted = false) {
+    const tasksToShow = (filteredTasks || this.tasks).filter(task => includeDeleted || !task.deleted);
 
     if (tasksToShow.length === 0) {
       console.log('No tasks found.');
@@ -61,37 +62,58 @@ class TaskManager {
   }
 
   markComplete(taskId) {
-    for (const task of this.tasks) {
-      if (task.id === taskId) {
-        task.status = 'Completed';
-        this.saveTasks();
-        console.log(`Task '${task.title}' marked as completed!`);
-        return;
-      }
+    const task = this.tasks.find(t => t.id === taskId && !t.deleted);
+    if (task) {
+      task.status = 'Completed';
+      this.saveTasks();
+      console.log(`Task '${task.title}' marked as completed!`);
+    } else {
+      console.log(`Task with ID ${taskId} not found.`);
     }
-    console.log(`Task with ID ${taskId} not found.`);
   }
 
-  deleteTask(taskId) {
-    for (let i = 0; i < this.tasks.length; i++) {
-      if (this.tasks[i].id === taskId) {
-        const removed = this.tasks.splice(i, 1)[0];
-        this.saveTasks();
-        console.log(`Task '${removed.title}' deleted successfully!`);
-        return;
-      }
+  async deleteTask(taskId) {
+    const task = this.tasks.find(t => t.id === taskId && !t.deleted);
+    if (!task) {
+      console.log(`Task with ID ${taskId} not found or already deleted.`);
+      return;
     }
-    console.log(`Task with ID ${taskId} not found.`);
+
+    const confirmation = await prompt(`Are you sure you want to delete task '${task.title}'? (s/n): `);
+    if (confirmation.toLowerCase() === 's') {
+      task.deleted = true;
+      this.saveTasks();
+      console.log(`Task '${task.title}' moved to recycle bin.`);
+    } else {
+      console.log('Deletion canceled.');
+    }
   }
 
   searchTasks(keyword) {
     const lowerKeyword = keyword.toLowerCase();
     const filtered = this.tasks.filter(task =>
-      task.title.toLowerCase().includes(lowerKeyword) ||
-      task.description.toLowerCase().includes(lowerKeyword)
+      !task.deleted &&
+      (task.title.toLowerCase().includes(lowerKeyword) ||
+       task.description.toLowerCase().includes(lowerKeyword))
     );
 
     this.listTasks(filtered);
+  }
+
+  listRecycleBin() {
+    const deletedTasks = this.tasks.filter(task => task.deleted);
+    this.listTasks(deletedTasks, true);
+  }
+
+  restoreTask(taskId) {
+    const task = this.tasks.find(t => t.id === taskId && t.deleted);
+    if (task) {
+      task.deleted = false;
+      this.saveTasks();
+      console.log(`Task '${task.title}' restored from recycle bin.`);
+    } else {
+      console.log(`Task with ID ${taskId} not found in recycle bin.`);
+    }
   }
 }
 
@@ -117,10 +139,12 @@ async function main() {
     console.log('2. List Tasks');
     console.log('3. Mark Task as Complete');
     console.log('4. Delete Task');
-    console.log('5. Exit');
-    console.log('6. Search Tasks by Keyword');
+    console.log('5. Search Tasks by Keyword');
+    console.log('6. View Recycle Bin');
+    console.log('7. Restore Task from Recycle Bin');
+    console.log('8. Exit');
 
-    const choice = await prompt('Enter your choice (1-6): ');
+    const choice = await prompt('Enter your choice (1-8): ');
 
     if (choice === '1') {
       const title = await prompt('Enter task title: ');
@@ -137,16 +161,23 @@ async function main() {
     }
     else if (choice === '4') {
       const taskId = parseInt(await prompt('Enter task ID to delete: '));
-      taskManager.deleteTask(taskId);
+      await taskManager.deleteTask(taskId);
     }
     else if (choice === '5') {
+      const keyword = await prompt('Enter keyword to search in title/description: ');
+      taskManager.searchTasks(keyword);
+    }
+    else if (choice === '6') {
+      taskManager.listRecycleBin();
+    }
+    else if (choice === '7') {
+      const taskId = parseInt(await prompt('Enter task ID to restore: '));
+      taskManager.restoreTask(taskId);
+    }
+    else if (choice === '8') {
       console.log('Exiting Task Manager. Goodbye!');
       rl.close();
       break;
-    }
-    else if (choice === '6') {
-      const keyword = await prompt('Enter keyword to search in title/description: ');
-      taskManager.searchTasks(keyword);
     }
     else {
       console.log('Invalid choice. Please try again.');
