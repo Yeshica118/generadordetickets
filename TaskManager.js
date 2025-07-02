@@ -1,11 +1,12 @@
 const fs = require('fs');
 const readline = require('readline');
+const pool = require('./db');
 
 class TaskManager {
   constructor() {
-    this.tasks = [];
     this.fileName = 'tasks.json';
-    this.loadTasks();
+    this.tasks = [];
+    this.loadTasks(); 
   }
 
   loadTasks() {
@@ -21,99 +22,156 @@ class TaskManager {
   }
 
   saveTasks() {
-    fs.writeFileSync(this.fileName, JSON.stringify(this.tasks, null, 2));
+    fs.writeFileSync(this.fileName, JSON.stringify(this.tasks));
   }
 
-  addTask(title, description, deadline) {
-    const task = {
-      id: this.tasks.length + 1,
-      title,
-      description,
-      deadline: deadline || null,
-      status: 'Pending',
-      createdDate: new Date().toISOString().replace('T', ' ').substring(0, 19),
-      deleted: false 
-    };
-
-    this.tasks.push(task);
-    this.saveTasks();
-    console.log(`Task '${title}' added successfully!`);
-  }
-
-  listTasks(filteredTasks = null, includeDeleted = false) {
-    const tasksToShow = (filteredTasks || this.tasks).filter(task => includeDeleted || !task.deleted);
-
-    if (tasksToShow.length === 0) {
-      console.log('No tasks found.');
-      return;
-    }
-
-    console.log('\n' + '='.repeat(100));
-    console.log(`${'ID'.padEnd(5)} ${'TITLE'.padEnd(20)} ${'STATUS'.padEnd(10)} ${'CREATED DATE'.padEnd(20)} ${'DEADLINE'.padEnd(15)} ${'DESCRIPTION'.padEnd(25)}`);
-    console.log('-'.repeat(100));
-
-    for (const task of tasksToShow) {
-      console.log(
-        `${String(task.id).padEnd(5)} ${task.title.substring(0, 18).padEnd(20)} ${task.status.padEnd(10)} ${task.createdDate.padEnd(20)} ${String(task.deadline || 'N/A').padEnd(15)} ${task.description.substring(0, 23).padEnd(25)}`
+  async addTask(title, description, deadline) {
+    try {
+      await pool.query(
+        `INSERT INTO tasks (title, description, deadline, status, created_date, deleted)
+         VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, $5)`,
+        [title, description, deadline || null, 'Pending', false]
       );
+      console.log(` Tarea '${title}' añadida correctamente a la base de datos.`);
+    } catch (error) {
+      console.error(' Error al añadir la tarea:', error.message);
     }
-
-    console.log('='.repeat(100) + '\n');
   }
 
-  markComplete(taskId) {
-    const task = this.tasks.find(t => t.id === taskId && !t.deleted);
-    if (task) {
-      task.status = 'Completed';
-      this.saveTasks();
-      console.log(`Task '${task.title}' marked as completed!`);
-    } else {
-      console.log(`Task with ID ${taskId} not found.`);
+  async listTasks() {
+    try {
+      const result = await pool.query(`
+        SELECT id, title, status, created_date, deadline, description 
+        FROM tasks 
+        WHERE deleted = FALSE
+        ORDER BY created_date DESC
+      `);
+
+      const tasks = result.rows;
+
+      if (tasks.length === 0) {
+        console.log('No tasks found.');
+        return;
+      }
+
+      console.log('\n' + '='.repeat(100));
+      console.log(`${'ID'.padEnd(5)} ${'TITLE'.padEnd(20)} ${'STATUS'.padEnd(10)} ${'CREATED DATE'.padEnd(20)} ${'DEADLINE'.padEnd(15)} ${'DESCRIPTION'.padEnd(25)}`);
+      console.log('-'.repeat(100));
+
+      for (const task of tasks) {
+        console.log(
+          `${String(task.id).padEnd(5)} ${task.title.substring(0, 18).padEnd(20)} ${task.status.padEnd(10)} ${task.created_date.toISOString().slice(0, 19).replace('T', ' ').padEnd(20)} ${String(task.deadline || 'N/A').padEnd(15)} ${task.description.substring(0, 23).padEnd(25)}`
+        );
+      }
+
+      console.log('='.repeat(100) + '\n');
+
+    } catch (error) {
+      console.error(' Error al listar tareas:', error.message);
+    }
+  }
+
+  async markComplete(taskId) {
+    try {
+      const result = await pool.query(
+        `UPDATE tasks 
+         SET status = 'Completed' 
+         WHERE id = $1 AND deleted = FALSE 
+         RETURNING title`,
+        [taskId]
+      );
+
+      if (result.rowCount === 0) {
+        console.log(` No se encontró una tarea activa con ID ${taskId}.`);
+      } else {
+        console.log(` Tarea '${result.rows[0].title}' marcada como completada.`);
+      }
+    } catch (error) {
+      console.error(' Error al marcar como completada:', error.message);
     }
   }
 
   async deleteTask(taskId) {
-    const task = this.tasks.find(t => t.id === taskId && !t.deleted);
-    if (!task) {
-      console.log(`Task with ID ${taskId} not found or already deleted.`);
-      return;
-    }
+    try {
+      const result = await pool.query(
+        `UPDATE tasks 
+         SET deleted = TRUE 
+         WHERE id = $1 AND deleted = FALSE 
+         RETURNING title`,
+        [taskId]
+      );
 
-    const confirmation = await prompt(`Are you sure you want to delete task '${task.title}'? (s/n): `);
-    if (confirmation.toLowerCase() === 's') {
-      task.deleted = true;
-      this.saveTasks();
-      console.log(`Task '${task.title}' moved to recycle bin.`);
-    } else {
-      console.log('Deletion canceled.');
+      if (result.rowCount === 0) {
+        console.log(` No se encontró una tarea activa con ID ${taskId}.`);
+      } else {
+        console.log(` Tarea '${result.rows[0].title}' marcada como eliminada.`);
+      }
+    } catch (error) {
+      console.error(' Error al eliminar la tarea:', error.message);
+    }
+  }
+
+  async listDeletedTasks() {
+    try {
+      const result = await pool.query(`
+        SELECT id, title, status, created_date, deadline, description 
+        FROM tasks 
+        WHERE deleted = TRUE
+        ORDER BY created_date DESC
+      `);
+
+      const tasks = result.rows;
+
+      if (tasks.length === 0) {
+        console.log(' No hay tareas en la papelera.');
+        return;
+      }
+
+      console.log('\n TAREAS EN PAPELERA');
+      console.log('='.repeat(100));
+      console.log(`${'ID'.padEnd(5)} ${'TITLE'.padEnd(20)} ${'STATUS'.padEnd(10)} ${'CREATED DATE'.padEnd(20)} ${'DEADLINE'.padEnd(15)} ${'DESCRIPTION'.padEnd(25)}`);
+      console.log('-'.repeat(100));
+
+      for (const task of tasks) {
+        console.log(
+          `${String(task.id).padEnd(5)} ${task.title.substring(0, 18).padEnd(20)} ${task.status.padEnd(10)} ${task.created_date.toISOString().slice(0, 19).replace('T', ' ').padEnd(20)} ${String(task.deadline || 'N/A').padEnd(15)} ${task.description.substring(0, 23).padEnd(25)}`
+        );
+      }
+
+      console.log('='.repeat(100) + '\n');
+
+    } catch (error) {
+      console.error(' Error al mostrar la papelera:', error.message);
+    }
+  }
+
+  async restoreTask(taskId) {
+    try {
+      const result = await pool.query(
+        `UPDATE tasks 
+         SET deleted = FALSE 
+         WHERE id = $1 AND deleted = TRUE 
+         RETURNING title`,
+        [taskId]
+      );
+
+      if (result.rowCount === 0) {
+        console.log(` No se encontró una tarea eliminada con ID ${taskId}.`);
+      } else {
+        console.log(` Tarea restaurada: '${result.rows[0].title}'.`);
+      }
+    } catch (error) {
+      console.error(' Error al restaurar la tarea:', error.message);
     }
   }
 
   searchTasks(keyword) {
     const lowerKeyword = keyword.toLowerCase();
     const filtered = this.tasks.filter(task =>
-      !task.deleted &&
-      (task.title.toLowerCase().includes(lowerKeyword) ||
-       task.description.toLowerCase().includes(lowerKeyword))
+      task.title.toLowerCase().includes(lowerKeyword) ||
+      task.description.toLowerCase().includes(lowerKeyword)
     );
-
     this.listTasks(filtered);
-  }
-
-  listRecycleBin() {
-    const deletedTasks = this.tasks.filter(task => task.deleted);
-    this.listTasks(deletedTasks, true);
-  }
-
-  restoreTask(taskId) {
-    const task = this.tasks.find(t => t.id === taskId && t.deleted);
-    if (task) {
-      task.deleted = false;
-      this.saveTasks();
-      console.log(`Task '${task.title}' restored from recycle bin.`);
-    } else {
-      console.log(`Task with ID ${taskId} not found in recycle bin.`);
-    }
   }
 }
 
@@ -139,10 +197,10 @@ async function main() {
     console.log('2. List Tasks');
     console.log('3. Mark Task as Complete');
     console.log('4. Delete Task');
-    console.log('5. Search Tasks by Keyword');
-    console.log('6. View Recycle Bin');
-    console.log('7. Restore Task from Recycle Bin');
-    console.log('8. Exit');
+    console.log('5. Exit');
+    console.log('6. Search Tasks by Keyword');
+    console.log('7. View Deleted Tasks');
+    console.log('8. Restore Deleted Task');
 
     const choice = await prompt('Enter your choice (1-8): ');
 
@@ -150,34 +208,34 @@ async function main() {
       const title = await prompt('Enter task title: ');
       const description = await prompt('Enter task description: ');
       const deadline = await prompt('Enter deadline (YYYY-MM-DD) or leave blank: ');
-      taskManager.addTask(title, description, deadline.trim() || null);
+      await taskManager.addTask(title, description, deadline.trim() || null);
     }
     else if (choice === '2') {
-      taskManager.listTasks();
+      await taskManager.listTasks();
     }
     else if (choice === '3') {
       const taskId = parseInt(await prompt('Enter task ID to mark as complete: '));
-      taskManager.markComplete(taskId);
+      await taskManager.markComplete(taskId);
     }
     else if (choice === '4') {
       const taskId = parseInt(await prompt('Enter task ID to delete: '));
       await taskManager.deleteTask(taskId);
     }
     else if (choice === '5') {
-      const keyword = await prompt('Enter keyword to search in title/description: ');
-      taskManager.searchTasks(keyword);
-    }
-    else if (choice === '6') {
-      taskManager.listRecycleBin();
-    }
-    else if (choice === '7') {
-      const taskId = parseInt(await prompt('Enter task ID to restore: '));
-      taskManager.restoreTask(taskId);
-    }
-    else if (choice === '8') {
       console.log('Exiting Task Manager. Goodbye!');
       rl.close();
       break;
+    }
+    else if (choice === '6') {
+      const keyword = await prompt('Enter keyword to search in title/description: ');
+      taskManager.searchTasks(keyword);
+    }
+    else if (choice === '7') {
+      await taskManager.listDeletedTasks();
+    }
+    else if (choice === '8') {
+      const taskId = parseInt(await prompt('Enter ID of task to restore: '));
+      await taskManager.restoreTask(taskId);
     }
     else {
       console.log('Invalid choice. Please try again.');
@@ -186,6 +244,6 @@ async function main() {
 }
 
 main().catch(error => {
-  console.error('An error occurred:', error);
+  console.error('An error :', error);
   rl.close();
 });
